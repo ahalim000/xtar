@@ -1,0 +1,288 @@
+#!/bin/env python3
+
+import os
+import click
+import logging
+
+from dataclasses import dataclass
+from typing import Optional, List
+
+# Field offset	Field size (Bytes)	Field
+# 0	    100	File name
+# 100	8	File mode
+# 108	8	Owner’s numeric user ID
+# 116	8	Group’s numeric user ID
+# 124	12	File size in bytes (octal base)
+# 136	12	Last modification time in numeric Unix time format (octal)
+# 148	8	Checksum for header record
+# 156   1   Type Flag
+# 157	100	Name of linked file
+# 257   6   UStar indicator, "ustar", then NUL
+# 263   2   UStar version, "00"
+# 265   32  Owner user name
+# 297   32  Owner group name
+# 329   8   Device major number
+# 337   8   Device minor number
+# 345   155 Filename prefix
+
+logging.basicConfig()
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TarRecord:
+    file_name: str
+    file_mode: int
+    owner_user_id: int
+    group_user_id: int
+    file_size: int
+    last_mod_time: int
+    checksum: int
+    type_flag: str
+    name_linked_file: str
+    ustar_indicator: str
+    ustar_version: bytes
+    owner_user_name: str
+    owner_group_name: str
+    device_major_num: int
+    device_minor_num: int
+    filename_prefix: str
+    data: Optional[bytes]
+
+
+class TarFile:
+    def __init__(self, path: str):
+        self.path = path
+        self.file = open(self.path, "rb")
+
+    def _bytes_to_str(self, data: bytes) -> str:
+        return data.rstrip(b"\x00").decode("utf-8")
+
+    def _octal_bytes_to_int(self, data: bytes) -> int:
+        stripped_data = data.rstrip(b"\x00").decode("utf-8").lstrip("0")
+
+        if stripped_data == "":
+            return 0
+
+        return int(stripped_data, 8)
+
+    def _get_file_name(self) -> str:
+        file_name = self._bytes_to_str(self.file.read(100))
+        return file_name
+
+    def _get_file_mode(self) -> int:
+        file_mode = self._octal_bytes_to_int(self.file.read(8))
+        return file_mode
+
+    def _get_owner_user_id(self) -> int:
+        owner_user_id = self._octal_bytes_to_int(self.file.read(8))
+        return owner_user_id
+
+    def _get_group_user_id(self) -> int:
+        group_user_id = self._octal_bytes_to_int(self.file.read(8))
+        return group_user_id
+
+    def _get_file_size(self) -> int:
+        file_size = self._octal_bytes_to_int(self.file.read(12))
+        return file_size
+
+    def _get_last_mod_time(self) -> int:
+        last_mod_time = self._octal_bytes_to_int(self.file.read(12))
+        return last_mod_time
+
+    def _get_checksum(self) -> int:
+        checksum = self._octal_bytes_to_int(self.file.read(8).rstrip(b" "))
+        return checksum
+
+    def _get_type_flag(self) -> str:
+        type_flag = self._bytes_to_str(self.file.read(1))
+        return type_flag
+
+    def _get_name_linked_file(self) -> str:
+        name_linked_file = self._bytes_to_str(self.file.read(100))
+        return name_linked_file
+
+    def _get_ustar_indicator(self) -> str:
+        ustar_indicator = self._bytes_to_str(self.file.read(6))
+        return ustar_indicator
+
+    def _get_ustar_version(self) -> bytes:
+        ustar_version = self.file.read(2)
+        return ustar_version
+
+    def _get_owner_user_name(self) -> str:
+        owner_user_name = self._bytes_to_str(self.file.read(32))
+        return owner_user_name
+
+    def _get_owner_group_name(self) -> str:
+        owner_group_name = self._bytes_to_str(self.file.read(32))
+        return owner_group_name
+
+    def _get_device_major_num(self) -> int:
+        device_major_num = self._octal_bytes_to_int(self.file.read(8))
+        return device_major_num
+
+    def _get_device_minor_num(self) -> int:
+        device_minor_num = self._octal_bytes_to_int(self.file.read(8))
+        return device_minor_num
+
+    def _get_file_name_prefix(self) -> str:
+        file_name_prefix = self._bytes_to_str(self.file.read(155))
+        return file_name_prefix
+
+    def _get_data(self, file_size: int) -> Optional[bytes]:
+        if file_size == 0:
+            return None
+
+        data = self.file.read(file_size)
+        return data
+
+    def _collect_contents(self) -> List[TarRecord]:
+        contents = []
+
+        while True:
+            file_name = self._get_file_name()
+            if file_name == "":
+                break
+            logger.debug(f"File Name: {file_name}")
+
+            file_mode = self._get_file_mode()
+            logger.debug(f"File Mode: {file_mode}")
+
+            owner_user_id = self._get_owner_user_id()
+            logger.debug(f"Owner User ID: {owner_user_id}")
+
+            group_user_id = self._get_group_user_id()
+            logger.debug(f"Group User ID: {group_user_id}")
+
+            file_size = self._get_file_size()
+            logger.debug(f"File Size: {file_size}")
+
+            last_mod_time = self._get_last_mod_time()
+            logger.debug(f"Last Modification Time: {last_mod_time}")
+
+            checksum = self._get_checksum()
+            logger.debug(f"Checksum: {checksum}")
+
+            type_flag = self._get_type_flag()
+            logger.debug(f"Type Flag: {type_flag}")
+
+            name_linked_file = self._get_name_linked_file()
+            logger.debug(f"Name of Linked File: {name_linked_file}")
+
+            ustar_indicator = self._get_ustar_indicator()
+            logger.debug(f"UStar Indicator: {ustar_indicator}")
+
+            ustar_version = self._get_ustar_version()
+            logger.debug(f"UStar Version: {ustar_version}")
+
+            owner_user_name = self._get_owner_user_name()
+            logger.debug(f"Owner User Name: {owner_user_name}")
+
+            owner_group_name = self._get_owner_group_name()
+            logger.debug(f"Owner Group Name: {owner_group_name}")
+
+            device_major_num = self._get_device_major_num()
+            logger.debug(f"Device Major Number: {device_major_num}")
+
+            device_minor_num = self._get_device_minor_num()
+            logger.debug(f"Device Minor Number: {device_minor_num}")
+
+            file_name_prefix = self._get_file_name_prefix()
+            logger.debug(f"File Name Prefix: {file_name_prefix}")
+
+            # Header is 12 bytes shy of block size 512 bytes.
+            self.file.read(12)
+
+            data = self._get_data(file_size)
+            logger.debug(f"Data: {data}")
+
+            if file_size % 512 != 0:
+                self.file.read(512 - (file_size % 512))
+
+            tar_record = TarRecord(
+                file_name,
+                file_mode,
+                owner_user_id,
+                group_user_id,
+                file_size,
+                last_mod_time,
+                checksum,
+                type_flag,
+                name_linked_file,
+                ustar_indicator,
+                ustar_version,
+                owner_user_name,
+                owner_group_name,
+                device_major_num,
+                device_minor_num,
+                file_name_prefix,
+                data,
+            )
+
+            contents.append(tar_record)
+
+        return contents
+
+    def extract_contents(self, output: str, extract_path: Optional[str]):
+        os.makedirs(output, exist_ok=True)
+
+        contents = self._collect_contents()
+
+        filtered_records: List[TarRecord] = []
+        for tar_record in contents:
+            if not extract_path or os.path.commonpath([extract_path, tar_record.file_name]) != "":
+                filtered_records.append(tar_record)
+
+        for tar_record in filtered_records:
+            dst_path = os.path.join(output, tar_record.filename_prefix, tar_record.file_name)
+            if tar_record.type_flag == "5":
+                os.mkdir(dst_path, tar_record.file_mode)
+            elif tar_record.type_flag == "0":
+                with open(dst_path, "wb") as f:
+                    f.write(tar_record.data)
+            elif tar_record.type_flag == "1":
+                os.link(tar_record.name_linked_file, dst_path)
+            elif tar_record.type_flag == "2":
+                os.symlink(tar_record.name_linked_file, dst_path)
+            else:
+                raise Exception(f"Type Flag Not Supported: {tar_record.type_flag}")
+
+            if os.getuid() == 0:
+                os.chown(dst_path, tar_record.owner_user_id, tar_record.group_user_id)
+            os.chmod(dst_path, tar_record.file_mode)
+            os.utime(dst_path, times=(tar_record.last_mod_time, tar_record.last_mod_time))
+
+    def show_contents(self) -> List[TarRecord]:
+        contents = self._collect_contents()
+
+        for tar_record in contents:
+            print(tar_record.file_name)
+
+
+@click.command()
+@click.argument("path")
+@click.option("-e", "--extract-path", help="Directory/File within the tarfile to extract [default: entire tarfile]")
+@click.option("-o", "--output", help="Directory to extract tarfile into [default: $PWD]")
+@click.option("-s", "--show", is_flag=True, help="Shows contents of tarfile without extracting")
+@click.option("-v", "--verbose", is_flag=True)
+def cli(path: str, extract_path: Optional[str], output: Optional[str], show: bool, verbose: bool):
+    """
+    Takes a FILE or data from the stdin and extracts the contents of that file to
+    a given path.
+    """
+    if verbose:
+        logger.setLevel(logging.DEBUG)
+
+    if not output:
+        output = os.getcwd()
+
+    tarfile = TarFile(path)
+    if show:
+        return tarfile.show_contents()
+    else:
+        tarfile.extract_contents(output, extract_path)
+
+
+if __name__ == "__main__":
+    cli()
