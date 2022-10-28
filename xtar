@@ -243,28 +243,45 @@ class TarFile:
             print(tar_record.file_name)
 
 
-@click.command()
-@click.argument("path")
-@click.option("-e", "--extract-path", help="Directory/File within the tarfile to extract [default: entire tarfile]")
-@click.option("-o", "--output", help="Directory to extract tarfile into [default: $PWD]")
-@click.option("-s", "--show", is_flag=True, help="Shows contents of tarfile without extracting")
-@click.option("-v", "--verbose", is_flag=True)
-def cli(path: str, extract_path: Optional[str], output: Optional[str], show: bool, verbose: bool):
+def set_verbose(ctx, param, value):
+    if value:
+        logger.setLevel(logging.DEBUG)
+
+
+@click.group()
+@click.option("-v", "--verbose", is_flag=True, expose_value=False, callback=set_verbose)
+def cli():
     """
     Takes a FILE or data from the stdin and extracts the contents of that file to
     a given path.
     """
-    if verbose:
-        logger.setLevel(logging.DEBUG)
 
+
+@cli.command()
+@click.argument("path")
+@click.option("-e", "--extract-path", help="Directory/File within the tarfile to extract [default: entire tarfile]")
+@click.option("-o", "--output", help="Directory to extract tarfile into [default: $PWD]")
+@click.option("-v", "--verbose", is_flag=True, expose_value=False, callback=set_verbose)
+def extract(path: str, extract_path: Optional[str], output: Optional[str]):
+    """
+    Extract a TarFile
+    """
     if not output:
         output = os.getcwd()
 
     tarfile = TarFile(path)
-    if show:
-        return tarfile.show_contents()
-    else:
-        tarfile.extract_contents(output, extract_path)
+    tarfile.extract_contents(output, extract_path)
+
+
+@cli.command()
+@click.argument("path")
+@click.option("-v", "--verbose", is_flag=True, expose_value=False, callback=set_verbose)
+def show(path: str):
+    """
+    List Contents of a TarFile
+    """
+    tarfile = TarFile(path)
+    tarfile.show_contents()
 
 
 if __name__ == "__main__":
