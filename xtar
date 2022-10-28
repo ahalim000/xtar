@@ -4,6 +4,7 @@ import os
 import click
 import logging
 
+from io import BufferedReader
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -35,7 +36,6 @@ class TarRecord:
 class TarFile:
     def __init__(self, path: str):
         self.path = path
-        self.file = open(self.path, "rb")
 
     def _bytes_to_str(self, data: bytes) -> str:
         return data.rstrip(b"\x00").decode("utf-8")
@@ -48,161 +48,162 @@ class TarFile:
 
         return int(stripped_data, 8)
 
-    def _get_file_name(self) -> str:
-        file_name = self._bytes_to_str(self.file.read(100))
+    def _get_file_name(self, file_obj: BufferedReader) -> str:
+        file_name = self._bytes_to_str(file_obj.read(100))
         return file_name
 
-    def _get_file_mode(self) -> int:
-        file_mode = self._octal_bytes_to_int(self.file.read(8))
+    def _get_file_mode(self, file_obj: BufferedReader) -> int:
+        file_mode = self._octal_bytes_to_int(file_obj.read(8))
         return file_mode
 
-    def _get_owner_user_id(self) -> int:
-        owner_user_id = self._octal_bytes_to_int(self.file.read(8))
+    def _get_owner_user_id(self, file_obj: BufferedReader) -> int:
+        owner_user_id = self._octal_bytes_to_int(file_obj.read(8))
         return owner_user_id
 
-    def _get_group_user_id(self) -> int:
-        group_user_id = self._octal_bytes_to_int(self.file.read(8))
+    def _get_group_user_id(self, file_obj: BufferedReader) -> int:
+        group_user_id = self._octal_bytes_to_int(file_obj.read(8))
         return group_user_id
 
-    def _get_file_size(self) -> int:
-        file_size = self._octal_bytes_to_int(self.file.read(12))
+    def _get_file_size(self, file_obj: BufferedReader) -> int:
+        file_size = self._octal_bytes_to_int(file_obj.read(12))
         return file_size
 
-    def _get_last_mod_time(self) -> int:
-        last_mod_time = self._octal_bytes_to_int(self.file.read(12))
+    def _get_last_mod_time(self, file_obj: BufferedReader) -> int:
+        last_mod_time = self._octal_bytes_to_int(file_obj.read(12))
         return last_mod_time
 
-    def _get_checksum(self) -> int:
-        checksum = self._octal_bytes_to_int(self.file.read(8).rstrip(b" "))
+    def _get_checksum(self, file_obj: BufferedReader) -> int:
+        checksum = self._octal_bytes_to_int(file_obj.read(8).rstrip(b" "))
         return checksum
 
-    def _get_type_flag(self) -> str:
-        type_flag = self._bytes_to_str(self.file.read(1))
+    def _get_type_flag(self, file_obj: BufferedReader) -> str:
+        type_flag = self._bytes_to_str(file_obj.read(1))
         return type_flag
 
-    def _get_name_linked_file(self) -> str:
-        name_linked_file = self._bytes_to_str(self.file.read(100))
+    def _get_name_linked_file(self, file_obj: BufferedReader) -> str:
+        name_linked_file = self._bytes_to_str(file_obj.read(100))
         return name_linked_file
 
-    def _get_ustar_indicator(self) -> str:
-        ustar_indicator = self._bytes_to_str(self.file.read(6))
+    def _get_ustar_indicator(self, file_obj: BufferedReader) -> str:
+        ustar_indicator = self._bytes_to_str(file_obj.read(6))
         return ustar_indicator
 
-    def _get_ustar_version(self) -> bytes:
-        ustar_version = self.file.read(2)
+    def _get_ustar_version(self, file_obj: BufferedReader) -> bytes:
+        ustar_version = file_obj.read(2)
         return ustar_version
 
-    def _get_owner_user_name(self) -> str:
-        owner_user_name = self._bytes_to_str(self.file.read(32))
+    def _get_owner_user_name(self, file_obj: BufferedReader) -> str:
+        owner_user_name = self._bytes_to_str(file_obj.read(32))
         return owner_user_name
 
-    def _get_owner_group_name(self) -> str:
-        owner_group_name = self._bytes_to_str(self.file.read(32))
+    def _get_owner_group_name(self, file_obj: BufferedReader) -> str:
+        owner_group_name = self._bytes_to_str(file_obj.read(32))
         return owner_group_name
 
-    def _get_device_major_num(self) -> int:
-        device_major_num = self._octal_bytes_to_int(self.file.read(8))
+    def _get_device_major_num(self, file_obj: BufferedReader) -> int:
+        device_major_num = self._octal_bytes_to_int(file_obj.read(8))
         return device_major_num
 
-    def _get_device_minor_num(self) -> int:
-        device_minor_num = self._octal_bytes_to_int(self.file.read(8))
+    def _get_device_minor_num(self, file_obj: BufferedReader) -> int:
+        device_minor_num = self._octal_bytes_to_int(file_obj.read(8))
         return device_minor_num
 
-    def _get_file_name_prefix(self) -> str:
-        file_name_prefix = self._bytes_to_str(self.file.read(155))
+    def _get_file_name_prefix(self, file_obj: BufferedReader) -> str:
+        file_name_prefix = self._bytes_to_str(file_obj.read(155))
         return file_name_prefix
 
-    def _get_data(self, file_size: int) -> Optional[bytes]:
+    def _get_data(self, file_obj: BufferedReader, file_size: int) -> Optional[bytes]:
         if file_size == 0:
             return None
 
-        data = self.file.read(file_size)
+        data = file_obj.read(file_size)
         return data
 
     def _collect_contents(self) -> List[TarRecord]:
-        contents = []
+        with open(self.path, "rb") as file_obj:
+            contents = []
 
-        while True:
-            file_name = self._get_file_name()
-            if file_name == "":
-                break
-            logger.debug(f"File Name: {file_name}")
+            while True:
+                file_name = self._get_file_name(file_obj)
+                if file_name == "":
+                    break
+                logger.debug(f"File Name: {file_name}")
 
-            file_mode = self._get_file_mode()
-            logger.debug(f"File Mode: {file_mode}")
+                file_mode = self._get_file_mode(file_obj)
+                logger.debug(f"File Mode: {file_mode}")
 
-            owner_user_id = self._get_owner_user_id()
-            logger.debug(f"Owner User ID: {owner_user_id}")
+                owner_user_id = self._get_owner_user_id(file_obj)
+                logger.debug(f"Owner User ID: {owner_user_id}")
 
-            group_user_id = self._get_group_user_id()
-            logger.debug(f"Group User ID: {group_user_id}")
+                group_user_id = self._get_group_user_id(file_obj)
+                logger.debug(f"Group User ID: {group_user_id}")
 
-            file_size = self._get_file_size()
-            logger.debug(f"File Size: {file_size}")
+                file_size = self._get_file_size(file_obj)
+                logger.debug(f"File Size: {file_size}")
 
-            last_mod_time = self._get_last_mod_time()
-            logger.debug(f"Last Modification Time: {last_mod_time}")
+                last_mod_time = self._get_last_mod_time(file_obj)
+                logger.debug(f"Last Modification Time: {last_mod_time}")
 
-            checksum = self._get_checksum()
-            logger.debug(f"Checksum: {checksum}")
+                checksum = self._get_checksum(file_obj)
+                logger.debug(f"Checksum: {checksum}")
 
-            type_flag = self._get_type_flag()
-            logger.debug(f"Type Flag: {type_flag}")
+                type_flag = self._get_type_flag(file_obj)
+                logger.debug(f"Type Flag: {type_flag}")
 
-            name_linked_file = self._get_name_linked_file()
-            logger.debug(f"Name of Linked File: {name_linked_file}")
+                name_linked_file = self._get_name_linked_file(file_obj)
+                logger.debug(f"Name of Linked File: {name_linked_file}")
 
-            ustar_indicator = self._get_ustar_indicator()
-            logger.debug(f"UStar Indicator: {ustar_indicator}")
+                ustar_indicator = self._get_ustar_indicator(file_obj)
+                logger.debug(f"UStar Indicator: {ustar_indicator}")
 
-            ustar_version = self._get_ustar_version()
-            logger.debug(f"UStar Version: {ustar_version}")
+                ustar_version = self._get_ustar_version(file_obj)
+                logger.debug(f"UStar Version: {ustar_version}")
 
-            owner_user_name = self._get_owner_user_name()
-            logger.debug(f"Owner User Name: {owner_user_name}")
+                owner_user_name = self._get_owner_user_name(file_obj)
+                logger.debug(f"Owner User Name: {owner_user_name}")
 
-            owner_group_name = self._get_owner_group_name()
-            logger.debug(f"Owner Group Name: {owner_group_name}")
+                owner_group_name = self._get_owner_group_name(file_obj)
+                logger.debug(f"Owner Group Name: {owner_group_name}")
 
-            device_major_num = self._get_device_major_num()
-            logger.debug(f"Device Major Number: {device_major_num}")
+                device_major_num = self._get_device_major_num(file_obj)
+                logger.debug(f"Device Major Number: {device_major_num}")
 
-            device_minor_num = self._get_device_minor_num()
-            logger.debug(f"Device Minor Number: {device_minor_num}")
+                device_minor_num = self._get_device_minor_num(file_obj)
+                logger.debug(f"Device Minor Number: {device_minor_num}")
 
-            file_name_prefix = self._get_file_name_prefix()
-            logger.debug(f"File Name Prefix: {file_name_prefix}")
+                file_name_prefix = self._get_file_name_prefix(file_obj)
+                logger.debug(f"File Name Prefix: {file_name_prefix}")
 
-            # Header is 12 bytes shy of block size 512 bytes.
-            self.file.read(12)
+                # Header is 12 bytes shy of block size 512 bytes.
+                file_obj.read(12)
 
-            data = self._get_data(file_size)
-            logger.debug(f"Data: {data}")
+                data = self._get_data(file_obj, file_size)
+                logger.debug(f"Data: {data}")
 
-            if file_size % 512 != 0:
-                self.file.read(512 - (file_size % 512))
+                if file_size % 512 != 0:
+                    file_obj.read(512 - (file_size % 512))
 
-            tar_record = TarRecord(
-                file_name,
-                file_mode,
-                owner_user_id,
-                group_user_id,
-                file_size,
-                last_mod_time,
-                checksum,
-                type_flag,
-                name_linked_file,
-                ustar_indicator,
-                ustar_version,
-                owner_user_name,
-                owner_group_name,
-                device_major_num,
-                device_minor_num,
-                file_name_prefix,
-                data,
-            )
+                tar_record = TarRecord(
+                    file_name,
+                    file_mode,
+                    owner_user_id,
+                    group_user_id,
+                    file_size,
+                    last_mod_time,
+                    checksum,
+                    type_flag,
+                    name_linked_file,
+                    ustar_indicator,
+                    ustar_version,
+                    owner_user_name,
+                    owner_group_name,
+                    device_major_num,
+                    device_minor_num,
+                    file_name_prefix,
+                    data,
+                )
 
-            contents.append(tar_record)
+                contents.append(tar_record)
 
         return contents
 
